@@ -1,0 +1,32 @@
+# Lambda packages
+*.zip
+
+# Node.js
+node_modules/
+npm-debug.log*
+.npm
+
+# Go
+go.sum
+
+# Environment variables
+.env
+.env.local
+
+# AWS
+.aws/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Logs
+*.log

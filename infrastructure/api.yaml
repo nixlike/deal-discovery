@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'API Gateway and Lambda functions for Deal Discovery App'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  PhotoBucket:
+    Type: String
+  ProcessingQueueUrl:
+    Type: String
+  DatabaseEndpoint:
+    Type: String
+  LambdaExecutionRoleArn:
+    Type: String
+
+Resources:
+  # Photo Upload Lambda
+  PhotoUploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'photo-upload-${Environment}'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({ statusCode: 200, body: 'Placeholder' });
+      Role: !Ref LambdaExecutionRoleArn
+      Environment:
+        Variables:
+          PHOTO_BUCKET: !Ref PhotoBucket
+          PROCESSING_QUEUE_URL: !Ref ProcessingQueueUrl
+      Timeout: 30
+
+  # Deal Processor Lambda
+  DealProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'deal-processor-${Environment}'
+      Runtime: provided.al2
+      Handler: main
+      Code:
+        ZipFile: |
+          placeholder
+      Role: !Ref LambdaExecutionRoleArn
+      Environment:
+        Variables:
+          DB_HOST: !Ref DatabaseEndpoint
+          DB_PORT: '5432'
+          DB_NAME: dealdb
+          DB_USER: dealadmin
+      Timeout: 300
+
+  # Deals API Lambda
+  DealsApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'deals-api-${Environment}'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({ statusCode: 200, body: 'Placeholder' });
+      Role: !Ref LambdaExecutionRoleArn
+      Environment:
+        Variables:
+          DB_HOST: !Ref DatabaseEndpoint
+          DB_PORT: '5432'
+          DB_NAME: dealdb
+          DB_USER: dealadmin
+      Timeout: 30
+
+  # SQS Event Source for Deal Processor
+  DealProcessorEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:deal-processing-${Environment}'
+      FunctionName: !Ref DealProcessorFunction
+      BatchSize: 10
+
+  # API Gateway
+  DealApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'deal-api-${Environment}'
+      Description: Deal Discovery API
+
+  # API Gateway Resource
+  PhotoResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DealApi
+      ParentId: !GetAtt DealApi.RootResourceId
+      PathPart: photo
+
+  # API Gateway Resource for deals
+  DealsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DealApi
+      ParentId: !GetAtt DealApi.RootResourceId
+      PathPart: deals
+
+  # API Gateway Resource for individual deal
+  DealByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DealApi
+      ParentId: !Ref DealsResource
+      PathPart: '{id}'
+
+  # API Gateway Method for GET /deals
+  DealsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DealApi
+      ResourceId: !Ref DealsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DealsApiFunction.Arn}/invocations'
+
+  # API Gateway Method for GET /deals/{id}
+  DealByIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DealApi
+      ResourceId: !Ref DealByIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DealsApiFunction.Arn}/invocations'
+
+  # Lambda Permissions for API Gateway
+  DealsApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DealsApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub '${DealApi}/*/*'
+
+  # API Gateway Method
+  PhotoUploadMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DealApi
+      ResourceId: !Ref PhotoResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PhotoUploadFunction.Arn}/invocations'
+
+  # Lambda Permission for API Gateway
+  PhotoUploadPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PhotoUploadFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub '${DealApi}/*/POST/photo'
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - PhotoUploadMethod
+      - DealsGetMethod
+      - DealByIdGetMethod
+    Properties:
+      RestApiId: !Ref DealApi
+      StageName: !Ref Environment
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${DealApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiEndpoint'
+
+  PhotoUploadFunctionArn:
+    Description: Photo Upload Lambda ARN
+    Value: !GetAtt PhotoUploadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PhotoUploadFunction'
