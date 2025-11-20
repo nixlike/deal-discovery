@@ -16,6 +16,9 @@ go.sum
 # AWS
 .aws/
 
+# Q
+.q
+
 # IDE
 .vscode/
 .idea/
