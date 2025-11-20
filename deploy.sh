@@ -10,6 +10,14 @@ GITHUB_TOKEN=${5}
 
 echo "Deploying Deal Discovery App to $ENVIRONMENT environment in $REGION"
 
+# Deploy database infrastructure first
+echo "Deploying database infrastructure..."
+aws cloudformation deploy \
+  --template-file infrastructure/database.yaml \
+  --stack-name deal-discovery-database-$ENVIRONMENT \
+  --parameter-overrides Environment=$ENVIRONMENT \
+  --region $REGION
+
 # Deploy main infrastructure
 echo "Deploying main infrastructure..."
 aws cloudformation deploy \
@@ -30,8 +38,13 @@ PROCESSING_QUEUE_URL=$(aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs[?OutputKey==`ProcessingQueueUrl`].OutputValue' \
   --output text --region $REGION)
 
-DATABASE_ENDPOINT=$(aws cloudformation describe-stacks \
+PROCESSING_QUEUE_ARN=$(aws cloudformation describe-stacks \
   --stack-name deal-discovery-main-$ENVIRONMENT \
+  --query 'Stacks[0].Outputs[?OutputKey==`ProcessingQueueArn`].OutputValue' \
+  --output text --region $REGION)
+
+DATABASE_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name deal-discovery-database-$ENVIRONMENT \
   --query 'Stacks[0].Outputs[?OutputKey==`DatabaseEndpoint`].OutputValue' \
   --output text --region $REGION)
 
@@ -44,6 +57,7 @@ aws cloudformation deploy \
     Environment=$ENVIRONMENT \
     PhotoBucket=$PHOTO_BUCKET \
     ProcessingQueueUrl=$PROCESSING_QUEUE_URL \
+    ProcessingQueueArn=$PROCESSING_QUEUE_ARN \
     DatabaseEndpoint=$DATABASE_ENDPOINT \
     LambdaExecutionRoleArn=$(aws cloudformation describe-stacks \
       --stack-name deal-discovery-main-$ENVIRONMENT \

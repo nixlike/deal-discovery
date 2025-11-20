@@ -9,6 +9,8 @@ Parameters:
     Type: String
   ProcessingQueueUrl:
     Type: String
+  ProcessingQueueArn:
+    Type: String
   DatabaseEndpoint:
     Type: String
   LambdaExecutionRoleArn:
@@ -32,25 +34,6 @@ Resources:
           PROCESSING_QUEUE_URL: !Ref ProcessingQueueUrl
       Timeout: 30
 
-  # Deal Processor Lambda
-  DealProcessorFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub 'deal-processor-${Environment}'
-      Runtime: provided.al2
-      Handler: main
-      Code:
-        ZipFile: |
-          placeholder
-      Role: !Ref LambdaExecutionRoleArn
-      Environment:
-        Variables:
-          DB_HOST: !Ref DatabaseEndpoint
-          DB_PORT: '5432'
-          DB_NAME: dealdb
-          DB_USER: dealadmin
-      Timeout: 300
-
   # Deals API Lambda
   DealsApiFunction:
     Type: AWS::Lambda::Function
@@ -68,13 +51,35 @@ Resources:
           DB_PORT: '5432'
           DB_NAME: dealdb
           DB_USER: dealadmin
+          DB_PASSWORD: TempPassword123!
       Timeout: 30
+
+  # Deal Processor Lambda (Python)
+  DealProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'deal-processor-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Role: !Ref LambdaExecutionRoleArn
+      Environment:
+        Variables:
+          DB_HOST: !Ref DatabaseEndpoint
+          DB_PORT: '5432'
+          DB_NAME: dealdb
+          DB_USER: dealadmin
+          DB_PASSWORD: TempPassword123!
+      Timeout: 300
 
   # SQS Event Source for Deal Processor
   DealProcessorEventSource:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
-      EventSourceArn: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:deal-processing-${Environment}'
+      EventSourceArn: !Ref ProcessingQueueArn
       FunctionName: !Ref DealProcessorFunction
       BatchSize: 10
 
@@ -142,7 +147,7 @@ Resources:
       FunctionName: !Ref DealsApiFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub '${DealApi}/*/*'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DealApi}/*/*'
 
   # API Gateway Method
   PhotoUploadMethod:
@@ -164,7 +169,7 @@ Resources:
       FunctionName: !Ref PhotoUploadFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub '${DealApi}/*/POST/photo'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DealApi}/*/POST/photo'
 
   # API Gateway Deployment
   ApiDeployment:

@@ -5,14 +5,12 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
 
 Resources:
   # S3 Bucket for photo storage
   PhotoBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'deal-photos-${Environment}-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -26,80 +24,10 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub 'deal-processing-${Environment}'
-      VisibilityTimeoutSeconds: 300
+      VisibilityTimeout: 300
       MessageRetentionPeriod: 1209600
 
-  # RDS PostgreSQL Database
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: Subnet group for deal database
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-
-  DealDatabase:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: !Sub 'deal-db-${Environment}'
-      DBInstanceClass: db.t3.micro
-      Engine: postgres
-      EngineVersion: '15.4'
-      AllocatedStorage: 20
-      StorageType: gp2
-      DBName: dealdb
-      MasterUsername: dealadmin
-      ManageMasterUserPassword: true
-      VPCSecurityGroups:
-        - !Ref DatabaseSecurityGroup
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      BackupRetentionPeriod: 7
-      DeletionProtection: false
-
-  # VPC and Networking
-  VPC:
-    Type: AWS::EC2::VPC
-    Properties:
-      CidrBlock: 10.0.0.0/16
-      EnableDnsHostnames: true
-      EnableDnsSupport: true
-
-  PrivateSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
-
-  PrivateSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.2.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
-
-  # Security Groups
-  DatabaseSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for RDS database
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          SourceSecurityGroupId: !Ref LambdaSecurityGroup
-
-  LambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Lambda functions
-      VpcId: !Ref VPC
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-
-  # IAM Roles
+  # IAM Role for Lambda
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -111,7 +39,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: DealAppPermissions
           PolicyDocument:
@@ -121,20 +49,19 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:PutObject
-                Resource: !Sub '${PhotoBucket}/*'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${PhotoBucket}/*'
+                  - !Sub 'arn:aws:s3:::${PhotoBucket}'
               - Effect: Allow
                 Action:
                   - sqs:SendMessage
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
                 Resource: !GetAtt ProcessingQueue.Arn
               - Effect: Allow
                 Action:
                   - rekognition:DetectText
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - rds:DescribeDBInstances
                 Resource: '*'
 
 Outputs:
@@ -150,11 +77,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-ProcessingQueue'
 
-  DatabaseEndpoint:
-    Description: RDS database endpoint
-    Value: !GetAtt DealDatabase.Endpoint.Address
+  ProcessingQueueArn:
+    Description: ARN of the SQS processing queue
+    Value: !GetAtt ProcessingQueue.Arn
     Export:
-      Name: !Sub '${AWS::StackName}-DatabaseEndpoint'
+      Name: !Sub '${AWS::StackName}-ProcessingQueueArn'
 
   LambdaExecutionRoleArn:
     Description: ARN of the Lambda execution role
