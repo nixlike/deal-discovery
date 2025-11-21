@@ -15,17 +15,20 @@ Photo-based deal discovery app with location extraction and expiration date dete
 ### Prerequisites
 - AWS CLI configured
 - Node.js 18+
-- Go 1.21+
+- Python 3.9+
 
 ### Quick Deploy
 ```bash
 ./deploy.sh dev us-east-1
 ```
 
-### With CodePipeline
+### With CodePipeline (Release Triggered)
+The CodePipeline automatically deploys when a GitHub release is created:
 ```bash
 ./deploy.sh dev us-east-1 your-github-username repo-name github-token
 ```
+
+Create a release on GitHub to trigger automatic Lambda function updates.
 
 ### Manual Steps
 1. Package Lambda functions:
