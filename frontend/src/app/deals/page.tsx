@@ -15,7 +15,61 @@ interface Deal {
 
 export default function Deals() {
   const [deals, setDeals] = useState<Deal[]>([])
+  const [filteredDeals, setFilteredDeals] = useState<Deal[]>([])
   const [loading, setLoading] = useState(true)
+  const [address, setAddress] = useState('')
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null)
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 3959 // Earth's radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  }
+
+  const geocodeAddress = async (address: string) => {
+    try {
+      const response = await fetch(`${process.env.API_ENDPOINT}/geocode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      })
+      const data = await response.json()
+      if (data.latitude && data.longitude) {
+        return { lat: data.latitude, lng: data.longitude }
+      }
+    } catch (error) {
+      console.error('Geocoding failed:', error)
+    }
+    return null
+  }
+
+  const handleAddressSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!address.trim()) return
+    
+    const location = await geocodeAddress(address)
+    if (location) {
+      setUserLocation(location)
+    } else {
+      alert('Address not found. Please try a different address.')
+    }
+  }
+
+  useEffect(() => {
+    if (userLocation && deals.length > 0) {
+      const nearby = deals.filter(deal => {
+        const distance = calculateDistance(userLocation.lat, userLocation.lng, deal.latitude, deal.longitude)
+        return distance <= 10
+      })
+      setFilteredDeals(nearby)
+    } else {
+      setFilteredDeals(deals)
+    }
+  }, [userLocation, deals])
 
   useEffect(() => {
     const fetchDeals = async () => {
@@ -65,11 +119,41 @@ export default function Deals() {
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
       <h1>Local Deals</h1>
       
-      {deals.length === 0 ? (
-        <p>No deals found.</p>
+      <form onSubmit={handleAddressSubmit} style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+          Filter by Location (10 mile radius):
+        </label>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Enter address, city, or zip code"
+            style={{ flex: 1, padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+          />
+          <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}>
+            Search
+          </button>
+        </div>
+        {userLocation && (
+          <div style={{ marginTop: '10px', fontSize: '14px', color: '#666' }}>
+            Showing deals within 10 miles of your location • 
+            <button 
+              type="button" 
+              onClick={() => { setUserLocation(null); setAddress('') }}
+              style={{ marginLeft: '5px', background: 'none', border: 'none', color: '#007bff', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
+      </form>
+      
+      {filteredDeals.length === 0 && !loading ? (
+        <p>{userLocation ? 'No deals found within 10 miles of your location.' : 'No deals found.'}</p>
       ) : (
         <div>
-          {deals.map((deal) => (
+          {filteredDeals.map((deal) => (
             <div
               key={deal.id}
               style={{

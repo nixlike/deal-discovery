@@ -5,6 +5,13 @@ Parameters:
   Environment:
     Type: String
     Default: dev
+  LambdaSecurityGroupId:
+    Type: String
+    Description: Security Group ID for Lambda functions
+    Default: ""
+
+Conditions:
+  HasLambdaSecurityGroup: !Not [!Equals [!Ref LambdaSecurityGroupId, ""]]
 
 Resources:
   # VPC for RDS
@@ -60,6 +67,45 @@ Resources:
           FromPort: 5432
           ToPort: 5432
           CidrIp: 10.0.0.0/16
+
+  # Additional rule for Lambda security group if provided
+  DatabaseSecurityGroupLambdaRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasLambdaSecurityGroup
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref LambdaSecurityGroupId
+
+  # VPC Endpoints for AWS services
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  # Route Table for private subnets
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
 
   # RDS PostgreSQL Database
   DealDatabase:

@@ -48,6 +48,11 @@ DATABASE_ENDPOINT=$(aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs[?OutputKey==`DatabaseEndpoint`].OutputValue' \
   --output text --region $REGION)
 
+LAMBDA_EXECUTION_ROLE_ARN=$(aws cloudformation describe-stacks \
+  --stack-name deal-discovery-main-$ENVIRONMENT \
+  --query 'Stacks[0].Outputs[?OutputKey==`LambdaExecutionRoleArn`].OutputValue' \
+  --output text --region $REGION)
+
 # Deploy API and Lambda functions
 echo "Deploying API Gateway and Lambda functions..."
 aws cloudformation deploy \
@@ -59,10 +64,7 @@ aws cloudformation deploy \
     ProcessingQueueUrl=$PROCESSING_QUEUE_URL \
     ProcessingQueueArn=$PROCESSING_QUEUE_ARN \
     DatabaseEndpoint=$DATABASE_ENDPOINT \
-    LambdaExecutionRoleArn=$(aws cloudformation describe-stacks \
-      --stack-name deal-discovery-main-$ENVIRONMENT \
-      --query 'Stacks[0].Outputs[?OutputKey==`LambdaExecutionRoleArn`].OutputValue' \
-      --output text --region $REGION) \
+    LambdaExecutionRoleArn=$LAMBDA_EXECUTION_ROLE_ARN \
   --capabilities CAPABILITY_IAM \
   --region $REGION
 

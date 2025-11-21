@@ -43,7 +43,7 @@ export default function Home() {
         }).catch(() => null)
       }
 
-      const response = await fetch(`${process.env.API_ENDPOINT}/photo`, {
+      const response = await fetch(`https://5a5akzoql6.execute-api.us-east-1.amazonaws.com/dev/photo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

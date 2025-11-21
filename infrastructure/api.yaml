@@ -17,6 +17,17 @@ Parameters:
     Type: String
 
 Resources:
+  # Security Group for Lambda functions
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions
+      VpcId: !ImportValue 
+        Fn::Sub: 'deal-discovery-database-${Environment}-VPC'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
   # Photo Upload Lambda
   PhotoUploadFunction:
     Type: AWS::Lambda::Function
@@ -53,6 +64,14 @@ Resources:
           DB_USER: dealadmin
           DB_PASSWORD: TempPassword123!
       Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !ImportValue 
+            Fn::Sub: 'deal-discovery-database-${Environment}-PrivateSubnet1'
+          - !ImportValue 
+            Fn::Sub: 'deal-discovery-database-${Environment}-PrivateSubnet2'
 
   # Deal Processor Lambda (Python)
   DealProcessorFunction:
@@ -74,6 +93,14 @@ Resources:
           DB_USER: dealadmin
           DB_PASSWORD: TempPassword123!
       Timeout: 300
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !ImportValue 
+            Fn::Sub: 'deal-discovery-database-${Environment}-PrivateSubnet1'
+          - !ImportValue 
+            Fn::Sub: 'deal-discovery-database-${Environment}-PrivateSubnet2'
 
   # SQS Event Source for Deal Processor
   DealProcessorEventSource:
@@ -114,6 +141,14 @@ Resources:
       ParentId: !Ref DealsResource
       PathPart: '{id}'
 
+  # API Gateway Resource for geocode
+  GeocodeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DealApi
+      ParentId: !GetAtt DealApi.RootResourceId
+      PathPart: geocode
+
   # API Gateway Method for GET /deals
   DealsGetMethod:
     Type: AWS::ApiGateway::Method
@@ -140,6 +175,47 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DealsApiFunction.Arn}/invocations'
 
+  # API Gateway Method for POST /geocode
+  GeocodePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DealApi
+      ResourceId: !Ref GeocodeResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PhotoUploadFunction.Arn}/invocations'
+
+  # CORS OPTIONS method for geocode endpoint
+  GeocodeOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DealApi
+      ResourceId: !Ref GeocodeResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
   # Lambda Permissions for API Gateway
   DealsApiPermission:
     Type: AWS::Lambda::Permission
@@ -148,6 +224,34 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DealApi}/*/*'
+
+  # CORS OPTIONS method for photo endpoint
+  PhotoOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DealApi
+      ResourceId: !Ref PhotoResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
 
   # API Gateway Method
   PhotoUploadMethod:
@@ -171,13 +275,25 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DealApi}/*/POST/photo'
 
+  # Lambda Permission for Geocode endpoint
+  GeocodePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PhotoUploadFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DealApi}/*/POST/geocode'
+
   # API Gateway Deployment
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn: 
       - PhotoUploadMethod
+      - PhotoOptionsMethod
       - DealsGetMethod
       - DealByIdGetMethod
+      - GeocodePostMethod
+      - GeocodeOptionsMethod
     Properties:
       RestApiId: !Ref DealApi
       StageName: !Ref Environment
@@ -192,5 +308,11 @@ Outputs:
   PhotoUploadFunctionArn:
     Description: Photo Upload Lambda ARN
     Value: !GetAtt PhotoUploadFunction.Arn
+
+  LambdaSecurityGroupId:
+    Description: Security Group ID for Lambda functions
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaSecurityGroupId'
     Export:
       Name: !Sub '${AWS::StackName}-PhotoUploadFunction'
