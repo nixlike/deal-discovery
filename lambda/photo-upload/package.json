@@ -5,6 +5,7 @@
   "main": "index.js",
   "dependencies": {
     "aws-sdk": "^2.1490.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "exifreader": "^4.0.0"
   }
 }
