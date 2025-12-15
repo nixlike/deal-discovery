@@ -24,14 +24,14 @@ BUCKET_NAME=$(aws cloudformation describe-stacks \
 
 echo "📁 Bucket name: $BUCKET_NAME"
 
-# Build frontend in /tmp to save space
-echo "🔨 Building Next.js app in /tmp..."
-BUILD_DIR="/tmp/frontend-build-$$"
+# Build frontend in /var/tmp to save space
+echo "🔨 Building Next.js app in /var/tmp..."
+BUILD_DIR="/var/tmp/frontend-build-$$"
 cp -r frontend "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Set npm cache to /tmp
-export npm_config_cache="/tmp/.npm-cache-$$"
+# Set npm cache to /var/tmp
+export npm_config_cache="/var/tmp/.npm-cache-$$"
 npm install
 npm run build
 
@@ -51,7 +51,7 @@ fi
 # Clean up
 cd /
 rm -rf "$BUILD_DIR"
-rm -rf "/tmp/.npm-cache-$$"
+rm -rf "/var/tmp/.npm-cache-$$"
 
 # Get website URL
 WEBSITE_URL=$(aws cloudformation describe-stacks \
