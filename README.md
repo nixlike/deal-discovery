@@ -1,5 +1,7 @@
 # Deal Discovery App
 
+After deep consideration, this business model likely will not work.
+
 Photo-based deal discovery app with location extraction and expiration date detection.
 
 ## Architecture
